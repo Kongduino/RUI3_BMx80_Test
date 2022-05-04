@@ -83,7 +83,6 @@ bool hasBME680 = false, hasBME280 = false;
     float getPressure(void);
     float getHumidity(void);
 
-
 */
 
 uint8_t myBus[128];
