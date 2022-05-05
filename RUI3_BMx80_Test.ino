@@ -5,7 +5,10 @@
 rak1906 rak1906;
 BME280 bme280;
 bool hasBME680 = false, hasBME280 = false;
-
+float temp, humid, HPa, MSL = 1013.5;
+char inputBuffer[256];
+uint8_t ix = 0;
+uint32_t lastCheck;
 /*
   WARNING
 
@@ -126,22 +129,38 @@ void i2cScan() {
   Serial.println("I2C devices found: " + String(nDevices));
 }
 
+float calcAlt(float pressure) {
+  float A = pressure / MSL;
+  float B = 1 / 5.25588;
+  float C = pow(A, B);
+  C = 1.0 - C;
+  C = C / 0.0000225577;
+  return C;
+}
+
 void show680() {
   if (rak1906.update()) {
-    Serial.printf("Temperature = %.2f。C\r\n", rak1906.temperature());
-    Serial.printf("Humidity = %.2f%%\r\n", rak1906.humidity());
-    Serial.printf("Pressure = %.2f hPa\r\n", rak1906.pressure());
+    temp = rak1906.temperature();
+    humid = rak1906.humidity();
+    HPa = rak1906.pressure();
+    Serial.printf("Temperature = %.2f。C\r\n", temp);
+    Serial.printf("Humidity = %.2f%%\r\n", humid);
+    Serial.printf("Pressure = %.2f hPa\r\n", HPa);
     Serial.printf("Air quality = %.2f\r\n", rak1906.gas());
+    Serial.printf("Altitude with MSL %.2f HPa: %.2f m\n", MSL, calcAlt(HPa));
   } else {
     Serial.println("Please plug in the sensor RAK1906 and Reboot");
   }
 }
 
 void show280() {
-  float pressure = bme280.getPressure(), temp = bme280.getTemperature(), humidity = bme280.getHumidity();
+  HPa = bme280.getPressure() / 100.0;
+  temp = bme280.getTemperature();
+  humid = bme280.getHumidity();
   Serial.printf("Temperature = %.2f C\n", temp);
-  Serial.printf("Humidity = %.2f%%\n", humidity);
-  Serial.printf("Pressure = %.2f hPa\n", (pressure / 100.0));
+  Serial.printf("Humidity = %.2f%%\n", humid);
+  Serial.printf("Pressure = %.2f hPa\n", HPa);
+  Serial.printf("Altitude with MSL %.2f HPa: %.2f m\n", MSL, calcAlt(HPa));
 }
 
 void setup() {
@@ -193,10 +212,28 @@ void setup() {
       Serial.println("BMEx80 init fail!");
     }
   }
+  lastCheck = 0;
 }
 
 void loop() {
-  if (hasBME680) show680();
-  if (hasBME280) show280();
-  delay(10000);
+  if (Serial.available()) {
+    ix = 0;
+    memset(inputBuffer, 0, 256);
+    while (Serial.available()) {
+      inputBuffer[ix++] = Serial.read();
+      delay(10);
+    } inputBuffer[ix] = 0;
+    float x = atof(inputBuffer);
+    if (x < 870.0 || x > 1084.8) {
+      Serial.printf("MSL %.2f impossible!\n");
+      return;
+    }
+    MSL = x;
+    Serial.printf("Set MSL to %.2f HPa.\n", MSL);
+  }
+  if (millis() - lastCheck > 9999) {
+    if (hasBME680) show680();
+    if (hasBME280) show280();
+    lastCheck = millis();
+  }
 }
